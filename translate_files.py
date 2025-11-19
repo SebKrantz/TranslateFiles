@@ -238,8 +238,8 @@ def translate_excel(input_path: str, output_path: str, translator: GoogleTransla
     """
     Translate an Excel file (.xlsx or .xls).
     
-    Translates both column headers and all cell values in all sheets of the spreadsheet.
-    Preserves the original data structure and formatting.
+    Translates all cell values in all sheets of the spreadsheet, treating the first row
+    as data (not headers). Preserves the original data structure and formatting.
     
     Args:
         input_path: Path to the source Excel file
@@ -252,11 +252,13 @@ def translate_excel(input_path: str, output_path: str, translator: GoogleTransla
         ValueError: If the file cannot be read as an Excel file
     
     Note:
-        - Column names are translated first, then cell values
+        - The first row is treated as data, not headers (no column names are used)
+        - All cell values including the first row are translated
         - Null/NaN values are preserved and not translated
         - The output file format matches the input (xlsx or xls)
         - All sheets in the workbook are processed and translated
         - Sheet names are also translated
+        - Output file is written without headers
     """
     # Read all sheets
     excel_file = pd.ExcelFile(input_path)
@@ -265,28 +267,22 @@ def translate_excel(input_path: str, output_path: str, translator: GoogleTransla
     # Process each sheet
     translated_sheets = {}
     for sheet_name in sheet_names:
-        df = pd.read_excel(input_path, sheet_name=sheet_name)
+        # Read without headers - first row is treated as data
+        df = pd.read_excel(input_path, sheet_name=sheet_name, header=None)
         
         # Translate sheet name
         translated_sheet_name = translate_text(sheet_name, translator, cache)
         
-        # Translate column names
-        new_columns = []
-        for col in df.columns:
-            translated_col = translate_text(str(col), translator, cache)
-            new_columns.append(translated_col)
-        df.columns = new_columns
-        
-        # Translate cell values
+        # Translate all cell values (including what would have been the header row)
         for column in df.columns:
             df[column] = df[column].apply(lambda x: translate_text(x, translator, cache) if pd.notna(x) else x)
         
         translated_sheets[translated_sheet_name] = df
     
-    # Write all sheets to output file
+    # Write all sheets to output file without headers
     with pd.ExcelWriter(output_path, engine='openpyxl') as writer:
         for sheet_name, df in translated_sheets.items():
-            df.to_excel(writer, sheet_name=sheet_name, index=False)
+            df.to_excel(writer, sheet_name=sheet_name, index=False, header=False)
 
 
 def translate_word(input_path: str, output_path: str, translator: GoogleTranslator, cache: TranslationCache) -> None:

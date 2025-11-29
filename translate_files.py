@@ -211,10 +211,16 @@ def translate_text(text: str, translator: GoogleTranslator, cache: TranslationCa
         be translated. Other text is returned as-is. This prevents unnecessary
         API calls for text that doesn't need translation.
     """
-    if not isinstance(text, str) or not text.strip():
+    # Handle non-string types (including pandas Series, NaN, etc.)
+    if not isinstance(text, str):
         return text
     
+    # Check for NaN values (pandas can have string 'nan' or actual NaN)
     if pd.isna(text):
+        return text
+    
+    # Check for empty or whitespace-only strings
+    if not text.strip():
         return text
         
     cached = cache.get(text)
@@ -412,8 +418,14 @@ def translate_csv(input_path: str, output_path: str, translator: GoogleTranslato
         new_columns.append(translated_col)
     df.columns = new_columns
     
+    def safe_translate_cell(x):
+        """Safely translate a single cell value, handling Series objects."""
+        if isinstance(x, pd.Series):
+            return x
+        return translate_text(x, translator, cache)
+    
     for column in df.columns:
-        df[column] = df[column].apply(lambda x: translate_text(x, translator, cache) if pd.notna(x) else x)
+        df[column] = df[column].apply(safe_translate_cell)
     
     df.to_csv(output_path, index=False, encoding='utf-8')
 

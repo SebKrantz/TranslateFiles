@@ -284,7 +284,8 @@ def translate_excel(input_path: str, output_path: str, translator: GoogleTransla
     Translate an Excel file (.xlsx or .xls).
     
     Translates all cell values in all sheets of the spreadsheet, treating the first row
-    as data (not headers). Preserves the original data structure and formatting.
+    as data (not headers). Uses workbook-level optimization to extract unique values
+    across all sheets and translate them once.
     
     Args:
         input_path: Path to the source Excel file
@@ -299,6 +300,7 @@ def translate_excel(input_path: str, output_path: str, translator: GoogleTransla
     Note:
         - The first row is treated as data, not headers (no column names are used)
         - All cell values including the first row are translated
+        - Workbook-level optimization: unique values extracted across ALL sheets
         - Null/NaN values are preserved and not translated
         - The output file format matches the input (xlsx or xls)
         - All sheets in the workbook are processed and translated
@@ -309,17 +311,36 @@ def translate_excel(input_path: str, output_path: str, translator: GoogleTransla
     excel_file = pd.ExcelFile(input_path)
     sheet_names = excel_file.sheet_names
     
-    # Process each sheet
-    translated_sheets = {}
+    # Load all sheets first
+    sheets_data: dict[str, pd.DataFrame] = {}
     for sheet_name in sheet_names:
-        # Read without headers - first row is treated as data
-        df = pd.read_excel(input_path, sheet_name=sheet_name, header=None)
+        sheets_data[sheet_name] = pd.read_excel(input_path, sheet_name=sheet_name, header=None)
+    
+    # Collect unique text values across ALL sheets (workbook-level optimization)
+    unique_texts: set[str] = set()
+    for df in sheets_data.values():
+        for column in df.columns:
+            for value in df[column].dropna().unique():
+                if isinstance(value, str) and value.strip():
+                    unique_texts.add(value)
+    
+    # Also include sheet names in the unique set
+    for sheet_name in sheet_names:
+        if isinstance(sheet_name, str) and sheet_name.strip():
+            unique_texts.add(sheet_name)
+    
+    # Translate all unique values once
+    translations: dict[str, str] = {}
+    for text in unique_texts:
+        translations[text] = translate_text(text, translator, cache)
+    
+    # Apply translations to all sheets
+    translated_sheets: dict[str, pd.DataFrame] = {}
+    for sheet_name, df in sheets_data.items():
+        translated_sheet_name = translations.get(sheet_name, sheet_name)
         
-        # Translate sheet name
-        translated_sheet_name = translate_text(sheet_name, translator, cache)
-        
-        # Translate all cell values using unique value extraction
-        df = translate_dataframe_values(df, translator, cache)
+        for column in df.columns:
+            df[column] = df[column].map(lambda x: translations.get(x, x) if isinstance(x, str) else x)
         
         translated_sheets[translated_sheet_name] = df
     

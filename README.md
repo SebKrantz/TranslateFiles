@@ -63,7 +63,7 @@ translate_directory(
 
 - Treats first row as data (no column headers)
 - Translates all cell values including the first row
-- Uses unique value extraction for efficient translation of repeated values
+- **Workbook-level optimization**: Extracts unique values across ALL sheets, translates once
 - Preserves data structure and formatting
 - Handles null/NaN values gracefully
 - Translates sheet names
@@ -254,15 +254,23 @@ By default, the cache file is stored as `translation_cache.json` in the target d
 
 For Excel and CSV files, the module uses an efficient translation strategy:
 
-1. **Extract unique values**: Collects all unique text values across the entire sheet/file
+1. **Extract unique values**: Collects all unique text values across the entire file
 2. **Translate once**: Each unique value is translated only once (leveraging the cache)
 3. **Map back**: Translations are mapped back to original positions using fast vectorized operations
+
+### Excel Workbook-Level Optimization
+
+For Excel files, unique values are extracted across **all sheets** in the workbook, not just per-sheet. This means:
+- Values shared between sheets are translated only once
+- Sheet names are included in the same deduplication pass
+- A single translation dictionary is built for the entire workbook
 
 ### Benefits
 
 - **Reduced function calls**: For a column with 10,000 rows but only 10 unique values, only 10 translation calls are made instead of 10,000
 - **Lower overhead**: Avoids per-cell type checking and cache lookups for duplicate values
 - **Cross-column deduplication**: Duplicate values across different columns are also handled efficiently
+- **Cross-sheet deduplication** (Excel): Values appearing in multiple sheets are translated only once
 
 This optimization is particularly effective for datasets with categorical data, repeated labels, or standardized values.
 
